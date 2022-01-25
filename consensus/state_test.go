@@ -64,35 +64,32 @@ func TestStateProposerSelection0(t *testing.T) {
 
 	startTestRound(cs1, height, round)
 
-	// Wait for new round so proposer is set.
 	ensureNewRound(newRoundCh, height, round)
-
-	// Commit a block and ensure proposer for the next height is correct.
 	prop := cs1.GetRoundState().Validators.GetProposer()
 	pv, err := cs1.privValidator.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
+
+	// (H:0, R:0), expect proposer to be p0
 	if !bytes.Equal(prop.Address, address) {
 		t.Fatalf("expected proposer to be validator %d. Got %X", 0, prop.Address)
 	}
 
-	// Wait for complete proposal.
 	ensureNewProposal(proposalCh, height, round)
-
 	rs := cs1.GetRoundState()
 	signAddVotes(cs1, tmproto.PrevoteType, nil, rs.ProposalBlockParts.Header(), vss[1:]...)
 	signAddVotes(cs1, tmproto.PrecommitType, nil, rs.ProposalBlockParts.Header(), vss[1:]...)
 
 	round++
 	incrementRound(vss[1:]...)
-	// Wait for new round so next validator is set.
 	ensureNewRound(newRoundCh, height, round)
-
 	prop = cs1.GetRoundState().Validators.GetProposer()
 	pv1, err := vss[1].GetPubKey()
 	require.NoError(t, err)
-	addr := pv1.Address()
-	if !bytes.Equal(prop.Address, addr) {
+	addr1 := pv1.Address()
+
+	// (H:0, R:1), expect proposer to be p1
+	if !bytes.Equal(prop.Address, addr1) {
 		panic(fmt.Sprintf("expected proposer to be validator %d. Got %X", 1, prop.Address))
 	}
 
@@ -100,9 +97,32 @@ func TestStateProposerSelection0(t *testing.T) {
 	if prop == nil || propBlock == nil {
 		t.Fatal("Failed to create proposal block with vs2")
 	}
+	if err := cs1.SetProposalAndBlock(proposal, propBlock, propBlock.MakePartSet(types.BlockPartSizeBytes), ""); err != nil {
+		t.Fatal(err)
+	}
 
-	// now we're on a new round and not the proposer
-	// so set the proposal block
+	ensureNewProposal(proposalCh, height, round)
+
+	signAddVotes(cs1, tmproto.PrevoteType, nil, rs.ProposalBlockParts.Header(), vss[1:]...)
+	signAddVotes(cs1, tmproto.PrecommitType, nil, rs.ProposalBlockParts.Header(), vss[1:]...)
+
+	round++
+	incrementRound(vss[1:]...)
+	ensureNewRound(newRoundCh, height, round)
+	prop = cs1.GetRoundState().Validators.GetProposer()
+	pv2, err := vss[2].GetPubKey()
+	require.NoError(t, err)
+	addr2 := pv2.Address()
+
+	// (H:0, R:2), expect proposer to be p2
+	if !bytes.Equal(prop.Address, addr2) {
+		panic(fmt.Sprintf("expected proposer to be validator %d. Got %X", 2, prop.Address))
+	}
+
+	proposal, propBlock = decideProposal(cs1, vss[2], 1, round)
+	if prop == nil || propBlock == nil {
+		t.Fatal("Failed to create proposal block with vs2")
+	}
 	if err := cs1.SetProposalAndBlock(proposal, propBlock, propBlock.MakePartSet(types.BlockPartSizeBytes), ""); err != nil {
 		t.Fatal(err)
 	}
@@ -116,10 +136,13 @@ func TestStateProposerSelection0(t *testing.T) {
 
 	prop = cs1.GetRoundState().Validators.GetProposer()
 	require.NoError(t, err)
-	pv3, err := vss[2].GetPubKey()
-	addr = pv3.Address()
-	if !bytes.Equal(prop.Address, addr) {
-		panic(fmt.Sprintf("expected proposer to be validator %d. Got %X", 2, prop.Address))
+
+	pv3, err := vss[3].GetPubKey()
+	addr3 := pv3.Address()
+
+	// (H:1, R:0), expect proposer to be p3, however, this fails and instead we observe p1 proposing again.
+	if !bytes.Equal(prop.Address, addr3) {
+		panic(fmt.Sprintf("expected proposer to be validator %d. Got %X", 3, prop.Address))
 	}
 }
 
